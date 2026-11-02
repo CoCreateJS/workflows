@@ -7,36 +7,61 @@ jobs:
   about:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16
-      - name: Jaid/action-sync-node-meta
-        uses: jaid/action-sync-node-meta@v1.4.0
-        with:
-          direction: overwrite-github
-          githubToken: "${{ secrets.GITHUB }}"
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Sync package.json description and keywords to GitHub repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB }}
+        run: |
+          if [ ! -f package.json ]; then
+            echo "No package.json found; skipping repository metadata sync."
+            exit 0
+          fi
+
+          DESCRIPTION=$(jq -r '.description // empty' package.json)
+          if [ -n "$DESCRIPTION" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}" -f description="$DESCRIPTION"
+          else
+            echo "No package description found; leaving GitHub description unchanged."
+          fi
+
+          if jq -e '.keywords | type == "array"' package.json >/dev/null; then
+            TOPICS=$(jq -c '.keywords | map(ascii_downcase | gsub("[^a-z0-9-]+"; "-") | gsub("(^-+|-+$)"; "") | .[0:50]) | map(select(length > 0)) | unique | .[0:20]' package.json)
+            printf '{"names":%s}' "$TOPICS" | gh api --method PUT -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/topics" --input -
+          else
+            echo "No package keywords found; leaving GitHub topics unchanged."
+          fi
+
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB }}
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v3
-        id: semantic
-        with:
-          extra_plugins: |
-            @semantic-release/changelog
+          node-version: '24'
+
+      - name: Install Semantic Release & Plugins
+        run: |
+          npm install -g semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/npm \
+            @semantic-release/github \
             @semantic-release/git
-            @semantic-release/github
+
+      - name: Run Semantic Release
+        id: semantic
+        run: npx semantic-release
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB }}"
+          NPM_TOKEN: "${{ secrets.NPM_TOKEN }}"
+
     outputs:
       new_release_published: "${{ steps.semantic.outputs.new_release_published }}"
       new_release_version: "${{ steps.semantic.outputs.new_release_version }}"

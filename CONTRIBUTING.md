@@ -1,19 +1,19 @@
 # Contributing to CoCreate-pwa
 
-This project is work of [many contributors](https://github.com/CoCreateJS/CoCreate-pwa/graphs/contributors).
-You're encouraged to submit [pull requests](https://github.com/CoCreateJS/CoCreate-pwa/pulls),
-[propose features and discuss issues](https://github.com/CoCreateJS/CoCreate-pwa/issues).
+This project is work of [many contributors](https://github.com/CoCreateJS/pwa/graphs/contributors).
+You're encouraged to submit [pull requests](https://github.com/CoCreateJS/pwa/pulls),
+[propose features and discuss issues](https://github.com/CoCreateJS/pwa/issues).
 
 In the examples below, substitute your Github username for `contributor` in URLs.
 
 ## Fork the Project
 
-Fork the [project on Github](https://github.com/CoCreateJS/CoCreate-pwa) and check out your copy.
+Fork the [project on Github](https://github.com/CoCreateJS/pwa) and check out your copy.
 
 ```
 git pwa https://github.com/contributor/CoCreate-pwa.git
 cd CoCreate-pwa
-git remote add upstream https://github.com/cocreatejs/CoCreate-pwa.git
+git remote add upstream https://github.com/CoCreateJS/pwa.git
 ```
 
 ## Create a Topic Branch
@@ -75,7 +75,7 @@ git push origin my-feature-branch
 
 ## Make a Pull Request
 
-Go to [https://github.com/CoCreateJS/CoCreate-pwa](https://github.com/CoCreateJS/CoCreate-pwa) and select your feature branch.
+Go to [https://github.com/CoCreateJS/pwa](https://github.com/CoCreateJS/pwa) and select your feature branch.
 Click the 'Pull Request' button and fill out the form. Pull requests are usually reviewed within a few days.
 
 ## Rebase

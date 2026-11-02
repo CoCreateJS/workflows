@@ -15,12 +15,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CoCreateJS/CoCreate-workflows.git"
+    "url": "git+https://github.com/CoCreateJS/workflows.git"
   },
   "author": "CoCreate LLC",
   "license": "AGPL-3.0",
   "bugs": {
-    "url": "https://github.com/CoCreateJS/CoCreate-workflows/issues"
+    "url": "https://github.com/CoCreateJS/workflows/issues"
   },
   "homepage": "https://CoCreateJS.com/docs/workflows",
   "type": "module",
