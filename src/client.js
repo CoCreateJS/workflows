@@ -239,8 +239,7 @@ export default WorkflowsClient;
  * Declares workflow names on a form scope and initializes workflow methods on the form and descendant input-AST elements.
  *
  * @name workflow
- * @kind member
- * @attribute
+ * @kind attribute
  * @valueType comma-separated string
  * @environment client
  */
@@ -249,8 +248,7 @@ export default WorkflowsClient;
  * Maps element values into the workflow request envelope using the named prefix. If keyed values were collected, the same-key workflow result is passed to setData.
  *
  * @name {name}-key
- * @kind member
- * @attribute
+ * @kind attribute
  * @valueType string
  * @environment client
  */
