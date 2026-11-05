@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/CoCreateJS/workflows/compare/v1.0.0...v1.1.0) (2026-11-05)
+
+
+### Bug Fixes
+
+* upgrade CoCreate dependencies to v2 ([9e382c8](https://github.com/CoCreateJS/workflows/commit/9e382c8f99da177a768093216acb3b83ed324875))
+
+
+### Features
+
+* authorize workflow HTTP requests and support nested execution ([b4b70b3](https://github.com/CoCreateJS/workflows/commit/b4b70b380b13e9e5aec7d6204e58855bc6a09668))
+
 # 1.0.0 (2026-11-02)
 
 
