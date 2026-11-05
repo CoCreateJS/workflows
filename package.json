@@ -38,9 +38,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@cocreate/actions": "^1.27.0",
-    "@cocreate/observer": "^1.25.0",
-    "@cocreate/socket-client": "^1.45.0",
-    "@cocreate/utils": "^1.57.0"
+    "@cocreate/actions": "^2.0.0",
+    "@cocreate/observer": "^2.0.0",
+    "@cocreate/socket-client": "^2.0.0",
+    "@cocreate/utils": "^2.0.0"
   }
 }
