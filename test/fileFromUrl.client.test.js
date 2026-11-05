@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import Workflows from '../src/server.js';
-import { getData } from '../../CoCreate-utils/src/modules/getData.js';
-import { setData } from '../../CoCreate-utils/src/modules/setData.js';
+import { getData } from '../../utils/src/modules/getData.js';
+import { setData } from '../../utils/src/modules/setData.js';
 
 test('generic workflow form maps URL input to a CoCreate File result controller', async t => {
     const definition = JSON.parse(fs.readFileSync(new URL('../demo/fileFromUrl.json', import.meta.url), 'utf8'));

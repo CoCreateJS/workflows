@@ -40,6 +40,18 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
 	const api = server.api?.send
 		? { send: (request) => server.api.send(request, context) }
 		: undefined;
+	const workflows = {
+		async run(request = {}) {
+			const child = { ...request, organization_id, host };
+			// Nested calls return to their caller; only the outer call sends a socket response.
+			delete child.socket;
+			const result = await run(child);
+			if (result.error?.length) {
+				throw new Error(result.error.map(error => error?.message || String(error)).join('; '));
+			}
+			return result;
+		}
+	};
 
 	const sandbox = {
 		payload: envelope,
@@ -50,6 +62,7 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
 		socket,
 		wsManager: socket,
 		api,
+		workflows,
 		fetch: (...args) => globalThis.fetch(...args),
 		URL: globalThis.URL,
 		organization_id,
@@ -106,6 +119,7 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
  * @environment server
  */
 		$api: sandbox.api,
+		$workflows: sandbox.workflows,
 		/**
 		 *
  * @public
@@ -172,8 +186,8 @@ async function run(envelope = {}) {
 			throw new Error("A workflow name is required in method workflow.<name>.");
 		}
 
-		const organization_id = envelope.organization_id || envelope.socket?.organization_id;
-		const host = envelope.host || envelope.socket?.host;
+		const organization_id = envelope.socket?.organization_id || envelope.organization_id;
+		const host = envelope.socket?.host || envelope.host;
 		if (!organization_id || !host) {
 			throw new Error("organization_id and host are required to run a workflow.");
 		}
@@ -224,7 +238,81 @@ async function run(envelope = {}) {
 	return envelope;
 }
 
-const API = { run };
+/**
+ * Handles inbound workflow HTTP requests and authorizes the named invocation before execution.
+ * @param {object} req - Native HTTP request.
+ * @param {object} res - Native HTTP response.
+ * @returns {Promise<void>}
+ * @public
+ * @environment server
+ */
+async function http(req, res) {
+    const reply = (status, body) => {
+        res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(body));
+    };
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return reply(405, { error: 'Use POST for this operation.' });
+    }
+    if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+        return reply(415, { error: 'An application/json body is required.' });
+    }
+    let input;
+    try {
+        const chunks = [];
+        let size = 0;
+        for await (const chunk of req) {
+            const buffer = Buffer.from(chunk);
+            size += buffer.length;
+            if (size > 1024 * 1024) return reply(413, { error: 'Request body exceeds 1 MiB.' });
+            chunks.push(buffer);
+        }
+        input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error();
+    } catch {
+        return reply(400, { error: 'A JSON object is required.' });
+    }
+
+    const bearer = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    const apikey = bearer || input.apikey;
+    if ((apikey !== undefined && (typeof apikey !== 'string' || !apikey.trim())) ||
+        (bearer && input.apikey !== undefined && input.apikey !== bearer)) {
+        return reply(401, { error: 'A valid API key is required.' });
+    }
+
+    try {
+        const host = new URL(`https://${req.headers.host}`).hostname;
+        const organization = await server.crud.getOrganization({ host });
+        if (!organization?._id || organization.error) return reply(404, { error: 'Organization not found.' });
+        const path = (req.url || '').split('?')[0];
+        const name = decodeURIComponent(path.slice('/workflows/'.length));
+        if (!name || name.includes('/') || (input.method !== undefined && input.method !== `workflow.${name}`)) {
+            return reply(400, { error: 'A matching workflow name is required.' });
+        }
+        const envelope = { method: `workflow.${name}`, ...pickHttpFields(input, [name]) };
+        // Scope and identity are server-resolved, never supplied by the caller.
+        Object.assign(envelope, { organization_id: organization._id, host, apikey });
+        const request = await server.authorize?.request(envelope);
+        if (!request) return reply(403, { error: 'Operation is not authorized.' });
+        const result = await server.workflow.run(request);
+        const failed = result?.success === false || hasHttpErrors(result?.error);
+        return reply(failed ? 400 : 200, result);
+    } catch (error) {
+        if (error.code === 'AUTHORIZATION_DENIED') return reply(403, { error: error.message });
+        return reply(500, { error: 'Unable to process the operation.' });
+    }
+}
+
+function hasHttpErrors(error) {
+    return Array.isArray(error) ? error.length > 0 : Boolean(error);
+}
+
+function pickHttpFields(input, fields) {
+    return Object.fromEntries(fields.filter(field => Object.hasOwn(input, field)).map(field => [field, input[field]]));
+}
+
+const API = { run, http };
 
 /**
  * Binds server services and returns the workflow handler for registration on the workflow socket event.
@@ -240,9 +328,9 @@ async function init(Server) {
 	return API;
 }
 
-const Workflows = { init, run };
+const Workflows = { init, run, http };
 
-export { init, run };
+export { init, run, http };
 export default Workflows;
 
 /**

@@ -10,7 +10,7 @@
         "array": "$payload.unique.0.array",
         "filter": {
           "query": {
-            "{{ $payload.unique.0.unique-key }}": "$payload.unique.0.value"
+            "{{ $payload.unique.0.key }}": "$payload.unique.0.value"
           },
           "limit": 2
         }
@@ -19,11 +19,17 @@
     "$data.unique": {
       "$if.$actions.lookup.object.0.$exists": {
         "$true": {
-          "$this.setAttribute('unique', false)"
+          "$if.$actions.lookup.object.1.$exists": {
+            "$true": false,
+            "$else": {
+              "$if.$actions.lookup.object.0._id.$eq": {
+                "$payload.unique.0.object": true,
+                "$else": false
+              }
+            }
+          }
         },
-        "$else": {
-          "$this.setAttribute('unique', true)"
-        }
+        "$else": true
       }
     }
   }

@@ -61,6 +61,29 @@ available. CRUD and socket calls are scoped to the invocation's organization
 and host. `run()` mutates and returns the original envelope. Execution errors
 are appended to the envelope's `error` array.
 
+Workflow actions can await another workflow using `$workflows.run`:
+
+```json
+{
+  "vm": {
+    "$workflows.run": {
+      "method": "workflow.createVM",
+      "createVM": [{ "cluster_id": "$payload.orgConnected.0.cluster_id" }]
+    }
+  },
+  "$data.orgConnected.0.server": "$actions.vm.createVM.0.server"
+}
+```
+
+Nested workflows inherit the caller's organization and host. They return their
+envelope without sending a socket response; child errors stop the parent's
+remaining actions. `$workflow` still refers to the current workflow definition.
+Managed infrastructure workflows must start in a trusted platform context and
+build CRUD requests from trusted configuration, including database and storage
+selection. Tenant organization IDs are ownership metadata. VM creation alone
+does not establish readiness: routing must wait for the server lifecycle to
+report a healthy node and a verified public address.
+
 The server sandbox also provides `$fetch` and `$URL` for native server-side
 requests and URL parsing. File conversions are shared AST globals:
 `$encodeContent`, `$decodeContent`, `$getContentType`, `$getExtension`,
@@ -158,3 +181,9 @@ with `$this.setAttribute('unique', false)`. Form-level Actions use
 to those fields.
 
 See [`demo/workflow.json`](demo/workflow.json) and the [documentation](docs/index.html).
+
+## HTTP entrance
+
+The workflow service exposes `http(req, res)` for `POST /workflows/<name>`. The module accepts POST JSON bodies up to 1 MiB, resolves organization scope from the hostname, and authorizes through `server.authorize.request` before execution. Bearer API keys and the envelope `apikey` field are supported; conflicting keys are rejected. Missing permission or authorization service returns 403. Caller scope and socket/user identity are excluded, and execution uses the sanitized envelope without the transport key.
+
+`run()` remains the execution API used by trusted internal calls and socket dispatch, where socket authorization already occurs. Nested workflows retain their existing scoped execution.

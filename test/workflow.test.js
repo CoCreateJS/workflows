@@ -114,3 +114,16 @@ test("unique workflow allows the current object's own value", async () => {
 
 	assert.equal(envelope.unique, true);
 });
+
+test("unique workflow rejects another match even when the first belongs to the current object", async () => {
+	const { server } = createServer([{ _id: "current-user" }, { _id: "another-user" }]);
+	await initializeWorkflow(server);
+	const envelope = {
+		method: "workflow.unique",
+		organization_id: "org-1", host: "example.test",
+		unique: [{ array: "users", key: "email", value: "person@example.test", object: "current-user" }]
+	};
+	await Workflows.run(envelope);
+	assert.equal(envelope.error, undefined);
+	assert.equal(envelope.unique, false);
+});
