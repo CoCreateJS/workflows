@@ -35,7 +35,8 @@ async function initialize(child) {
                 return { object: [{ _id: 'server-1', cluster_id: request.filter.query.cluster_id }] };
             }
         },
-        wsManager: { async send(envelope) { sent.push(envelope); return envelope; } }
+        async send(envelope) { sent.push(envelope); return envelope; },
+        wsManager: { send() { assert.fail("Workflow must use server.send"); } }
     });
     return { requests, sent };
 }

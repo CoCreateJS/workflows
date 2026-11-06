@@ -28,14 +28,12 @@ function createServer(existingRecords) {
 					throw new Error(`Unexpected CRUD array: ${request.array}`);
 				}
 			},
+			async send(envelope) { sent.push(envelope); return envelope; },
 			wsManager: {
 				on(method, callback) {
 					listeners.set(method, callback);
 				},
-				async send(envelope) {
-					sent.push(envelope);
-					return envelope;
-				}
+				send() { assert.fail("Workflow must use server.send"); }
 			},
 			listener(method) {
 				return listeners.get(method);

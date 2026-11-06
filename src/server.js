@@ -232,8 +232,8 @@ async function run(envelope = {}) {
 		envelope.error.push(error?.message || String(error));
 	}
 
-	if (envelope.socket && server?.wsManager?.send) {
-		return server.wsManager.send(envelope);
+	if (envelope.socket && server?.send) {
+		return server.send(envelope);
 	}
 	return envelope;
 }

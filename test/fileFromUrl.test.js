@@ -10,7 +10,8 @@ async function setup() {
     const requests = [];
     await Workflows.init({
         crud: { send: async request => { requests.push(request); return { object: [request.method === "object.read" ? structuredClone(definition) : request.object] }; } },
-        wsManager: { send: async envelope => { sent.push(envelope); return envelope; } }
+        send: async envelope => { sent.push(envelope); return envelope; },
+        wsManager: { send() { assert.fail("Workflow must use server.send"); } }
     });
     return { sent, requests };
 }
