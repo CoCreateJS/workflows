@@ -1,3 +1,12 @@
+## [1.1.1](https://github.com/CoCreateJS/workflows/compare/v1.1.0...v1.1.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* complete unified socket package migration ([243660f](https://github.com/CoCreateJS/workflows/commit/243660f315f6408eaecd0e6ea7d44ddbd4b9688e))
+* preserve top-level workflow response scope ([5a361e9](https://github.com/CoCreateJS/workflows/commit/5a361e97d373bb18a71fb92212ac69facaa9ec5a))
+* route component responses through unified server send ([1b97055](https://github.com/CoCreateJS/workflows/commit/1b970553824ca17208306d6d44fd2525be77f57f))
+
 # [1.1.0](https://github.com/CoCreateJS/workflows/compare/v1.0.0...v1.1.0) (2026-11-05)
 
 

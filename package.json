@@ -1,6 +1,6 @@
 {
   "name": "@cocreate/workflows",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Declarative client actions and tenant-scoped server execution for CoCreate workflows.",
   "keywords": [
     "cocreate",
