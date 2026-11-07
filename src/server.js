@@ -35,7 +35,7 @@ function createTenantProxy(target, organization_id, host) {
 
 function createSandbox(envelope, workflowDefinition, organization_id, host) {
 	const crud = createTenantProxy(server.crud, organization_id, host);
-	const socket = createTenantProxy(server.wsManager, organization_id, host);
+	const socket = createTenantProxy({ send: payload => server.send(payload) }, organization_id, host);
 	const context = { organization_id, host, crud, wsManager: socket };
 	const api = server.api?.send
 		? { send: (request) => server.api.send(request, context) }
@@ -43,8 +43,12 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
 	const workflows = {
 		async run(request = {}) {
 			const child = { ...request, organization_id, host };
-			// Nested calls return to their caller; only the outer call sends a socket response.
-			delete child.socket;
+			// Nested work returns to its caller without inheriting client reply destinations.
+			for (const field of ["socketId", "clientId", "uuid", "frameId", "replyOrganizationId",
+				"broadcast", "broadcastClient", "broadcastSender", "subscription", "subscriptionKeys",
+				"server", "worker", "cluster", "master", "serverId", "workerId", "clusterId", "response"]) {
+				delete child[field];
+			}
 			const result = await run(child);
 			if (result.error?.length) {
 				throw new Error(result.error.map(error => error?.message || String(error)).join('; '));
@@ -186,8 +190,8 @@ async function run(envelope = {}) {
 			throw new Error("A workflow name is required in method workflow.<name>.");
 		}
 
-		const organization_id = envelope.socket?.organization_id || envelope.organization_id;
-		const host = envelope.socket?.host || envelope.host;
+		const organization_id = envelope.organization_id;
+		const host = envelope.host;
 		if (!organization_id || !host) {
 			throw new Error("organization_id and host are required to run a workflow.");
 		}
@@ -232,8 +236,12 @@ async function run(envelope = {}) {
 		envelope.error.push(error?.message || String(error));
 	}
 
-	if (envelope.socket && server?.send) {
-		return server.send(envelope);
+	try {
+		Promise.resolve(server.send(envelope)).catch(error => {
+			console.error("[@cocreate/workflows] Response delivery failed:", error);
+		});
+	} catch (error) {
+		console.error("[@cocreate/workflows] Response delivery failed:", error);
 	}
 	return envelope;
 }

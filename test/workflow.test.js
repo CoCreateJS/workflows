@@ -53,7 +53,8 @@ test("workflow socket handler runs AST with workflow data at the named top-level
 	const envelope = {
 		method: "workflow.unique",
 		uuid: "request-1",
-		socket: { organization_id: "org-1", host: "example.test" },
+		organization_id: "org-1", host: "example.test",
+		socket: { purpose: "ordinary payload" },
 		unique: [{
 			array: "users",
 			key: "email",
@@ -73,12 +74,44 @@ test("workflow socket handler runs AST with workflow data at the named top-level
 	assert.equal(crudRequests[1].host, "example.test");
 });
 
+test('workflow socket operators use server.send with top-level scope and preserve socket payload data', async () => {
+    const sent = [];
+    await Workflows.init({
+        crud: { send: async () => ({ object: [{ name: 'notify', actions: {
+            '$socket.send': { method: 'notification', organization_id: 'forged', host: 'forged.test', socket: { purpose: 'application data' } }
+        } }] }) },
+        send: data => { sent.push(data); return { unrelated: 'transport result' }; },
+        wsManager: { send() { assert.fail('Workflow must use server.send'); } }
+    });
+    const envelope = { method: 'workflow.notify', organization_id: 'org', host: 'example.test', socket: { purpose: 'input data' } };
+    assert.equal(await Workflows.run(envelope), envelope);
+    assert.equal(envelope.error, undefined);
+    assert.equal(sent[0].organization_id, 'org');
+    assert.equal(sent[0].host, 'example.test');
+    assert.deepEqual(sent[0].socket, { purpose: 'application data' });
+    assert.equal(sent[1], envelope);
+});
+
+test('workflow scope is never inferred from an ordinary socket payload field', async () => {
+    const sent = [];
+    await Workflows.init({
+        crud: { send() { assert.fail('Missing top-level scope must stop before lookup'); } },
+        send: data => sent.push(data)
+    });
+    const envelope = { method: 'workflow.notify', socket: { organization_id: 'org', host: 'example.test' } };
+    const result = await Workflows.run(envelope);
+    assert.match(result.error[0], /organization_id and host are required/);
+    assert.equal(result.socket, envelope.socket);
+    assert.equal(sent[0], envelope);
+});
+
 test("unique workflow marks a match owned by another object as unavailable", async () => {
 	const { server } = createServer([{ _id: "another-user" }]);
 	await initializeWorkflow(server);
 	const envelope = {
 		uuid: "request-2",
-		socket: { organization_id: "org-1", host: "example.test" },
+		organization_id: "org-1", host: "example.test",
+		socket: { purpose: "ordinary payload" },
 		method: "workflow.unique",
 		unique: [{
 			array: "users",
@@ -98,7 +131,8 @@ test("unique workflow allows the current object's own value", async () => {
 	await initializeWorkflow(server);
 	const envelope = {
 		uuid: "request-3",
-		socket: { organization_id: "org-1", host: "example.test" },
+		organization_id: "org-1", host: "example.test",
+		socket: { purpose: "ordinary payload" },
 		method: "workflow.unique",
 		unique: [{
 			array: "users",

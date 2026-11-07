@@ -14,7 +14,7 @@ async function initialize(child) {
                         method: 'workflow.createVM',
                         organization_id: 'tenant',
                         host: 'tenant.test',
-                        socket: { organization_id: 'tenant', host: 'tenant.test' },
+                        socket: { purpose: 'child payload' }, socketId: 'unwanted-destination', uuid: 'unwanted-correlation', broadcast: true,
                         createVM: [{ cluster_id: '$payload.orgConnected.0.cluster_id' }]
                     }
                 },
@@ -41,7 +41,7 @@ async function initialize(child) {
     return { requests, sent };
 }
 
-test('nested workflow returns outputs in platform scope and sends only the outer response', async () => {
+test('nested workflow returns outputs in platform scope and reserves reply routing for the outer response', async () => {
     const { requests, sent } = await initialize({
         name: 'createVM',
         actions: {
@@ -55,8 +55,9 @@ test('nested workflow returns outputs in platform scope and sends only the outer
     });
     const envelope = {
         method: 'workflow.orgConnected',
-        organization_id: 'untrusted-org', host: 'untrusted.test',
-        socket: { organization_id: 'platform', host: 'platform.test' },
+        organization_id: 'platform', host: 'platform.test',
+        socketId: 'requesting-socket', clientId: 'requesting-client', uuid: 'outer-request',
+        socket: { organization_id: 'untrusted-org', host: 'untrusted.test' },
         orgConnected: [{ cluster_id: 'cluster-1' }]
     };
     const response = await Workflows.run(envelope);
@@ -69,7 +70,12 @@ test('nested workflow returns outputs in platform scope and sends only the outer
         assert.equal(request.organization_id, 'platform');
         assert.equal(request.host, 'platform.test');
     }
-    assert.deepEqual(sent, [envelope]);
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1], envelope);
+    assert.equal(sent[0].socketId, undefined);
+    assert.equal(sent[0].uuid, undefined);
+    assert.equal(sent[0].broadcast, undefined);
+    assert.deepEqual(sent[0].socket, { purpose: 'child payload' });
 });
 
 test('a child error stops the parent before its remaining actions', async () => {
@@ -81,5 +87,6 @@ test('a child error stops the parent before its remaining actions', async () => 
     });
     assert.match(response.error[0], /createVM.*disabled/);
     assert.equal(response.orgConnected[0].finished, undefined);
-    assert.deepEqual(sent, []);
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1], response);
 });

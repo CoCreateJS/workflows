@@ -24,7 +24,7 @@ test('URL workflow preserves bytes, metadata, tenant scope, and the original env
     });
     const { sent, requests } = await setup();
     const file = { src: 'https://example.test/photo.png', name: 'custom.png', path: '/images', custom: 'preserved' };
-    const envelope = { method: 'workflow.fileFromUrl', uuid: 'request-1', fileFromUrl: [file], socket: { organization_id: 'org', host: 'example.test' } };
+    const envelope = { method: 'workflow.fileFromUrl', uuid: 'request-1', fileFromUrl: [file], organization_id: 'org', host: 'example.test', socket: { purpose: 'ordinary payload' } };
     const result = await Workflows.run(envelope);
     assert.equal(result, envelope);
     assert.equal(sent[0], envelope);
@@ -71,7 +71,7 @@ test('URL workflow sends HTTP failures on the same envelope without replacing in
     t.mock.method(globalThis, 'fetch', async () => new Response('Missing', { status: 404, statusText: 'Not Found' }));
     const { sent } = await setup();
     const input = [{ src: 'https://example.test/missing.png' }];
-    const envelope = { method: 'workflow.fileFromUrl', fileFromUrl: input, socket: { organization_id: 'org', host: 'example.test' } };
+    const envelope = { method: 'workflow.fileFromUrl', fileFromUrl: input, organization_id: 'org', host: 'example.test', socket: { purpose: 'ordinary payload' } };
     await Workflows.run(envelope);
     assert.deepEqual(envelope.error, ['Failed to fetch file: Not Found']);
     assert.equal(envelope.fileFromUrl, input);
@@ -89,7 +89,7 @@ test('URL workflow validates its URL before fetching', async t => {
 
  test('URL workflow reports failed persistence instead of returning an unsaved success', async t => {
     t.mock.method(globalThis, 'fetch', async () => new Response('file'));
-    await Workflows.init({ crud: { send: async request => request.method === 'object.read'
+    await Workflows.init({ send: async data => data, crud: { send: async request => request.method === 'object.read'
         ? { object: [structuredClone(definition)] } : { error: ['Save failed'] } } });
     const response = await Workflows.run({ method: 'workflow.fileFromUrl', organization_id: 'org', host: 'example.test', fileFromUrl: [{ src: 'https://example.test/a.txt' }] });
     assert.deepEqual(response.error, ['Could not save imported file to files.']);
@@ -97,7 +97,7 @@ test('URL workflow validates its URL before fetching', async t => {
 
 test('URL workflow returns the persisted record when an upsert also echoes the input', async t => {
     t.mock.method(globalThis, 'fetch', async () => new Response('file'));
-    await Workflows.init({ crud: { send: async request => request.method === 'object.read'
+    await Workflows.init({ send: async data => data, crud: { send: async request => request.method === 'object.read'
         ? { object: [structuredClone(definition)] }
         : { object: [request.object, { ...request.object, _id: 'stored-id' }] } } });
     const response = await Workflows.run({ method: 'workflow.fileFromUrl', organization_id: 'org', host: 'example.test', fileFromUrl: [{ src: 'https://example.test/a.txt', headers: { 'cache-control': 'private' } }] });

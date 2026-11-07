@@ -75,8 +75,9 @@ Workflow actions can await another workflow using `$workflows.run`:
 }
 ```
 
-Nested workflows inherit the caller's organization and host. They return their
-envelope without sending a socket response; child errors stop the parent's
+Nested workflows inherit the caller's top-level organization and host. Their
+envelopes omit client destinations and the outer request UUID before being passed
+to `server.send()`; child errors stop the parent's
 remaining actions. `$workflow` still refers to the current workflow definition.
 Managed infrastructure workflows must start in a trusted platform context and
 build CRUD requests from trusted configuration, including database and storage
