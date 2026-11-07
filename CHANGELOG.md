@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/CoCreateJS/workflows/compare/v1.1.1...v1.1.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* bump CoCreate dependency versions ([e1fa69b](https://github.com/CoCreateJS/workflows/commit/e1fa69b349ff3b9b2cd5bf5a37b8c5c9064f5d41))
+
 ## [1.1.1](https://github.com/CoCreateJS/workflows/compare/v1.1.0...v1.1.1) (2026-11-07)
 
 
