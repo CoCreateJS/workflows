@@ -44,7 +44,7 @@ workflow; its same-named top-level property contains the input objects:
 import Workflows from "@cocreate/workflows";
 
 const workflows = await Workflows.init(Server);
-Server.wsManager.on("workflow", workflows.run);
+Server.socket.on("workflow", workflows.run);
 const result = await workflows.run({
   method: "workflow.notify-users",
   organization_id,
@@ -56,7 +56,7 @@ const result = await workflows.run({
 ```
 
 The AST sandbox exposes `$payload`, `$event`, `$workflow`, `$crud`, `$socket`,
-`$wsManager`, and `$api.send` when the corresponding server service is
+`$socket`, and `$api.send` when the corresponding server service is
 available. CRUD and socket calls are scoped to the invocation's organization
 and host. `run()` mutates and returns the original envelope. Execution errors
 are appended to the envelope's `error` array.
@@ -185,6 +185,6 @@ See [`demo/workflow.json`](demo/workflow.json) and the [documentation](docs/inde
 
 ## HTTP entrance
 
-The workflow service exposes `http(req, res)` for `POST /workflows/<name>`. The module accepts POST JSON bodies up to 1 MiB, resolves organization scope from the hostname, and authorizes through `server.authorize.request` before execution. Bearer API keys and the envelope `apikey` field are supported; conflicting keys are rejected. Missing permission or authorization service returns 403. Caller scope and socket/user identity are excluded, and execution uses the sanitized envelope without the transport key.
+Inbound workflow payloads use the central Cluster HTTP transport, which resolves organization scope and authorizes before calling `server.workflow.run`. Invoke a workflow with a payload such as `{ "method": "workflow.example", "example": [{ "input": "value" }] }`.
 
 `run()` remains the execution API used by trusted internal calls and socket dispatch, where socket authorization already occurs. Nested workflows retain their existing scoped execution.

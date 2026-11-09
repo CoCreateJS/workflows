@@ -29,11 +29,8 @@ function createServer(existingRecords) {
 				}
 			},
 			async send(envelope) { sent.push(envelope); return envelope; },
-			wsManager: {
-				on(method, callback) {
-					listeners.set(method, callback);
-				},
-				send() { assert.fail("Workflow must use server.send"); }
+			on(method, callback) {
+				listeners.set(method, callback);
 			},
 			listener(method) {
 				return listeners.get(method);
@@ -44,7 +41,7 @@ function createServer(existingRecords) {
 
 async function initializeWorkflow(server) {
 	const workflow = await Workflows.init(server);
-	server.wsManager.on("workflow", workflow.run);
+	server.on("workflow", workflow.run);
 }
 
 test("workflow socket handler runs AST with workflow data at the named top-level key", async () => {
@@ -81,7 +78,7 @@ test('workflow socket operators use server.send with top-level scope and preserv
             '$socket.send': { method: 'notification', organization_id: 'forged', host: 'forged.test', socket: { purpose: 'application data' } }
         } }] }) },
         send: data => { sent.push(data); return { unrelated: 'transport result' }; },
-        wsManager: { send() { assert.fail('Workflow must use server.send'); } }
+        socket: { send() { assert.fail('Workflow must use server.send'); } }
     });
     const envelope = { method: 'workflow.notify', organization_id: 'org', host: 'example.test', socket: { purpose: 'input data' } };
     assert.equal(await Workflows.run(envelope), envelope);

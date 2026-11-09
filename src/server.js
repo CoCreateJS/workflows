@@ -11,7 +11,7 @@ import { astAsync } from "@cocreate/utils";
 
 let server;
 
-function createTenantProxy(target, organization_id, host) {
+function createTenantProxy(target, organization_id, host, allowOrganizationOverride = false) {
 	if (!target) return undefined;
 
 	return new Proxy(target, {
@@ -23,7 +23,9 @@ function createTenantProxy(target, organization_id, host) {
 				if (args.length === 0) {
 					args.push({ organization_id, host });
 				} else if (typeof args[0] === "object" && args[0] !== null) {
-					args[0].organization_id = organization_id;
+					if (!allowOrganizationOverride || !args[0].organization_id) {
+						args[0].organization_id = organization_id;
+					}
 					args[0].host = host;
 				}
 
@@ -33,10 +35,29 @@ function createTenantProxy(target, organization_id, host) {
 	});
 }
 
-function createSandbox(envelope, workflowDefinition, organization_id, host) {
-	const crud = createTenantProxy(server.crud, organization_id, host);
-	const socket = createTenantProxy({ send: payload => server.send(payload) }, organization_id, host);
-	const context = { organization_id, host, crud, wsManager: socket };
+function createWorkflowData(payload, workflowName) {
+	const source = payload[workflowName] ?? payload.data ?? {};
+	const data = source && typeof source === "object" ? source : {};
+
+	return new Proxy(data, {
+		get(data, property, receiver) {
+			if (property in data) return Reflect.get(data, property, receiver);
+			return property === workflowName ? payload[workflowName] : undefined;
+		},
+		set(data, property, value, receiver) {
+			if (property === workflowName) payload[property] = value;
+			else Reflect.set(data, property, value, receiver);
+			return true;
+		}
+	});
+}
+
+function createSandbox(payload, workflowDefinition, workflowName, organization_id, host) {
+	const allowOrganizationOverride =
+		!server.manager?.organization_id && organization_id === server.organization_id;
+	const crud = createTenantProxy(server.crud, organization_id, host, allowOrganizationOverride);
+	const secureSocket = createTenantProxy({ send: payload => server.send(payload) }, organization_id, host);
+	const context = { organization_id, host, crud, socket: secureSocket };
 	const api = server.api?.send
 		? { send: (request) => server.api.send(request, context) }
 		: undefined;
@@ -58,13 +79,13 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
 	};
 
 	const sandbox = {
-		payload: envelope,
-		event: envelope.event,
+		payload,
+		data: createWorkflowData(payload, workflowName),
+		event: payload.event,
 		workflow: workflowDefinition,
 		actions: Array.isArray(workflowDefinition.actions) ? [] : {},
 		crud,
-		socket,
-		wsManager: socket,
+		socket: secureSocket,
 		api,
 		workflows,
 		fetch: (...args) => globalThis.fetch(...args),
@@ -72,73 +93,6 @@ function createSandbox(envelope, workflowDefinition, organization_id, host) {
 		organization_id,
 		host
 	};
-
-	Object.assign(sandbox, {
-		/**
-		 *
- * @public
- * @environment server
- */
-		$payload: sandbox.payload,
-		$event: sandbox.event,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$workflow: sandbox.workflow,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$data: envelope,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$actions: sandbox.actions,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$crud: sandbox.crud,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$socket: sandbox.socket,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$wsManager: sandbox.wsManager,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$api: sandbox.api,
-		$workflows: sandbox.workflows,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$fetch: sandbox.fetch,
-		/**
-		 *
- * @public
- * @environment server
- */
-		$URL: sandbox.URL,
-		$organization_id: organization_id,
-		$host: host
-	});
 
 	return sandbox;
 }
@@ -150,7 +104,6 @@ async function executeWorkflowActions(actions, sandbox) {
 
 	const results = Array.isArray(actions) ? [] : {};
 	sandbox.actions = results;
-	sandbox.$actions = results;
 
 	const steps = Array.isArray(actions)
 		? actions
@@ -168,21 +121,21 @@ async function executeWorkflowActions(actions, sandbox) {
 /**
  * Loads a workflow record by the workflow name in the method or by ID,
  * evaluates its AST actions and output mapping, and writes the evaluated data
- * back to the same invocation envelope.
- * Errors are appended to the envelope's error array.
+ * back to the same invocation payload.
+ * Errors are appended to the payload's error array.
  *
- * Invocation shape: { method: "workflow.<name>", <name>: [ ...inputs ], organization_id, host }
+ * Invocation shape: { method: "workflow.<name>", <name>: [ ...inputs ] | data, organization_id, host }
  * Workflow record shape: { _id, name, enabled, actions }
  * @public
  * @environment server
  */
-async function run(envelope = {}) {
+async function run(payload = {}) {
 	try {
 		if (!server?.crud?.send) {
 			throw new Error("CoCreate Workflows has not been initialized with a server.");
 		}
 
-		const methodParts = String(envelope.method || "").split(".");
+		const methodParts = String(payload.method || "").split(".");
 		const workflowName = methodParts[0] === "workflow"
 			? methodParts.slice(1).join(".")
 			: "";
@@ -190,8 +143,8 @@ async function run(envelope = {}) {
 			throw new Error("A workflow name is required in method workflow.<name>.");
 		}
 
-		const organization_id = envelope.organization_id;
-		const host = envelope.host;
+		const organization_id = payload.organization_id;
+		const host = payload.host;
 		if (!organization_id || !host) {
 			throw new Error("organization_id and host are required to run a workflow.");
 		}
@@ -227,100 +180,26 @@ async function run(envelope = {}) {
 			throw new Error(`Workflow '${workflowName}' has no actions object.`);
 		}
 
-		const sandbox = createSandbox(envelope, workflowDefinition, organization_id, host);
+		const sandbox = createSandbox(payload, workflowDefinition, workflowName, organization_id, host);
 		await executeWorkflowActions(workflowDefinition.actions, sandbox);
 	} catch (error) {
-		if (!Array.isArray(envelope.error)) {
-			envelope.error = envelope.error ? [envelope.error] : [];
+		if (!Array.isArray(payload.error)) {
+			payload.error = payload.error ? [payload.error] : [];
 		}
-		envelope.error.push(error?.message || String(error));
+		payload.error.push(error?.message || String(error));
 	}
 
 	try {
-		Promise.resolve(server.send(envelope)).catch(error => {
+		Promise.resolve(server.send(payload)).catch(error => {
 			console.error("[@cocreate/workflows] Response delivery failed:", error);
 		});
 	} catch (error) {
 		console.error("[@cocreate/workflows] Response delivery failed:", error);
 	}
-	return envelope;
+	return payload;
 }
 
-/**
- * Handles inbound workflow HTTP requests and authorizes the named invocation before execution.
- * @param {object} req - Native HTTP request.
- * @param {object} res - Native HTTP response.
- * @returns {Promise<void>}
- * @public
- * @environment server
- */
-async function http(req, res) {
-    const reply = (status, body) => {
-        res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(body));
-    };
-    if (req.method !== 'POST') {
-        res.setHeader('Allow', 'POST');
-        return reply(405, { error: 'Use POST for this operation.' });
-    }
-    if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
-        return reply(415, { error: 'An application/json body is required.' });
-    }
-    let input;
-    try {
-        const chunks = [];
-        let size = 0;
-        for await (const chunk of req) {
-            const buffer = Buffer.from(chunk);
-            size += buffer.length;
-            if (size > 1024 * 1024) return reply(413, { error: 'Request body exceeds 1 MiB.' });
-            chunks.push(buffer);
-        }
-        input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error();
-    } catch {
-        return reply(400, { error: 'A JSON object is required.' });
-    }
-
-    const bearer = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
-    const apikey = bearer || input.apikey;
-    if ((apikey !== undefined && (typeof apikey !== 'string' || !apikey.trim())) ||
-        (bearer && input.apikey !== undefined && input.apikey !== bearer)) {
-        return reply(401, { error: 'A valid API key is required.' });
-    }
-
-    try {
-        const host = new URL(`https://${req.headers.host}`).hostname;
-        const organization = await server.crud.getOrganization({ host });
-        if (!organization?._id || organization.error) return reply(404, { error: 'Organization not found.' });
-        const path = (req.url || '').split('?')[0];
-        const name = decodeURIComponent(path.slice('/workflows/'.length));
-        if (!name || name.includes('/') || (input.method !== undefined && input.method !== `workflow.${name}`)) {
-            return reply(400, { error: 'A matching workflow name is required.' });
-        }
-        const envelope = { method: `workflow.${name}`, ...pickHttpFields(input, [name]) };
-        // Scope and identity are server-resolved, never supplied by the caller.
-        Object.assign(envelope, { organization_id: organization._id, host, apikey });
-        const request = await server.authorize?.request(envelope);
-        if (!request) return reply(403, { error: 'Operation is not authorized.' });
-        const result = await server.workflow.run(request);
-        const failed = result?.success === false || hasHttpErrors(result?.error);
-        return reply(failed ? 400 : 200, result);
-    } catch (error) {
-        if (error.code === 'AUTHORIZATION_DENIED') return reply(403, { error: error.message });
-        return reply(500, { error: 'Unable to process the operation.' });
-    }
-}
-
-function hasHttpErrors(error) {
-    return Array.isArray(error) ? error.length > 0 : Boolean(error);
-}
-
-function pickHttpFields(input, fields) {
-    return Object.fromEntries(fields.filter(field => Object.hasOwn(input, field)).map(field => [field, input[field]]));
-}
-
-const API = { run, http };
+const API = { run };
 
 /**
  * Binds server services and returns the workflow handler for registration on the workflow socket event.
@@ -336,9 +215,9 @@ async function init(Server) {
 	return API;
 }
 
-const Workflows = { init, run, http };
+const Workflows = { init, run };
 
-export { init, run, http };
+export { init, run };
 export default Workflows;
 
 /**
