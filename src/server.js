@@ -26,7 +26,7 @@ function createTenantProxy(target, organization_id, host, allowOrganizationOverr
 					if (!allowOrganizationOverride || !args[0].organization_id) {
 						args[0].organization_id = organization_id;
 					}
-					args[0].host = host;
+					args[0].host = allowOrganizationOverride ? (args[0].host || host) : host;
 				}
 
 				return original.apply(targetObject, args);
@@ -62,7 +62,7 @@ function createSandbox(payload, workflowDefinition, workflowName, organization_i
 		? { send: (request) => server.api.send(request, context) }
 		: undefined;
 	const workflows = {
-		async run(request = {}) {
+		async run(request = {}, { throwOnError = true } = {}) {
 			const child = { ...request, organization_id, host };
 			// Nested work returns to its caller without inheriting client reply destinations.
 			for (const field of ["socketId", "clientId", "uuid", "frameId", "replyOrganizationId",
@@ -70,16 +70,21 @@ function createSandbox(payload, workflowDefinition, workflowName, organization_i
 				"server", "worker", "cluster", "master", "serverId", "workerId", "clusterId", "response"]) {
 				delete child[field];
 			}
-			const result = await run(child);
-			if (result.error?.length) {
+			const result = await execute(child);
+			if (throwOnError && result.error?.length) {
 				throw new Error(result.error.map(error => error?.message || String(error)).join('; '));
 			}
 			return result;
 		}
 	};
 
+	const origin = server.socket?.sockets?.get(payload.socketId);
+	const clientInfo = origin?.organization_id === organization_id && origin?.user_id === payload.user_id
+		? structuredClone(origin.clientInfo) : undefined;
+
 	const sandbox = {
 		payload,
+		clientInfo,
 		data: createWorkflowData(payload, workflowName),
 		event: payload.event,
 		workflow: workflowDefinition,
@@ -112,7 +117,10 @@ async function executeWorkflowActions(actions, sandbox) {
 	for (const [index, step] of steps.entries()) {
 		const result = await astAsync({ executeAST: step, sandbox });
 		if (Array.isArray(results)) results[index] = result;
-		else if (result && typeof result === "object") Object.assign(results, result);
+		else if (result && typeof result === "object") {
+			Object.assign(results, result);
+			Object.assign(sandbox, result);
+		}
 	}
 
 	return results;
@@ -126,10 +134,10 @@ async function executeWorkflowActions(actions, sandbox) {
  *
  * Invocation shape: { method: "workflow.<name>", <name>: [ ...inputs ] | data, organization_id, host }
  * Workflow record shape: { _id, name, enabled, actions }
- * @public
+ * @private
  * @environment server
  */
-async function run(payload = {}) {
+async function execute(payload = {}) {
 	try {
 		if (!server?.crud?.send) {
 			throw new Error("CoCreate Workflows has not been initialized with a server.");
@@ -189,6 +197,17 @@ async function run(payload = {}) {
 		payload.error.push(error?.message || String(error));
 	}
 
+	return payload;
+}
+
+/**
+ * Execute a workflow transport invocation and send its single final response.
+ * Nested workflows execute internally; they do not send intermediate responses.
+ * @public
+ * @environment server
+ */
+async function run(payload = {}) {
+	await execute(payload);
 	try {
 		Promise.resolve(server.send(payload)).catch(error => {
 			console.error("[@cocreate/workflows] Response delivery failed:", error);

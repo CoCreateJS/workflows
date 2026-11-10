@@ -56,7 +56,7 @@ const result = await workflows.run({
 ```
 
 The AST sandbox exposes `$payload`, `$event`, `$workflow`, `$crud`, `$socket`,
-`$socket`, and `$api.send` when the corresponding server service is
+`$clientInfo`, and `$api.send` when the corresponding server service is
 available. CRUD and socket calls are scoped to the invocation's organization
 and host. `run()` mutates and returns the original envelope. Execution errors
 are appended to the envelope's `error` array.
@@ -75,9 +75,10 @@ Workflow actions can await another workflow using `$workflows.run`:
 }
 ```
 
-Nested workflows inherit the caller's top-level organization and host. Their
-envelopes omit client destinations and the outer request UUID before being passed
-to `server.send()`; child errors stop the parent's
+Nested workflows inherit the caller's top-level organization and host. They execute
+internally and return their envelopes to the parent without calling `server.send()`.
+Client destinations and the outer request UUID are stripped from child requests.
+Only the outer invocation sends a transport response; child errors stop the parent's
 remaining actions. `$workflow` still refers to the current workflow definition.
 Managed infrastructure workflows must start in a trusted platform context and
 build CRUD requests from trusted configuration, including database and storage
@@ -188,3 +189,8 @@ See [`demo/workflow.json`](demo/workflow.json) and the [documentation](docs/inde
 Inbound workflow payloads use the central Cluster HTTP transport, which resolves organization scope and authorizes before calling `server.workflow.run`. Invoke a workflow with a payload such as `{ "method": "workflow.example", "example": [{ "input": "value" }] }`.
 
 `run()` remains the execution API used by trusted internal calls and socket dispatch, where socket authorization already occurs. Nested workflows retain their existing scoped execution.
+
+`$clientInfo` is a snapshot of the originating connection's existing metadata when
+its organization and authenticated user match the invocation. It does not expose a
+socket object and is absent when the originating connection is unavailable locally.
+Onboarding can use its coordinates, falling back to the user's stored location.

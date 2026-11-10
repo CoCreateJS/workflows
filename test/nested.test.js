@@ -70,12 +70,8 @@ test('nested workflow returns outputs in platform scope and reserves reply routi
         assert.equal(request.organization_id, 'platform');
         assert.equal(request.host, 'platform.test');
     }
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1], envelope);
-    assert.equal(sent[0].socketId, undefined);
-    assert.equal(sent[0].uuid, undefined);
-    assert.equal(sent[0].broadcast, undefined);
-    assert.deepEqual(sent[0].socket, { purpose: 'child payload' });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0], envelope);
 });
 
 test('a child error stops the parent before its remaining actions', async () => {
@@ -87,6 +83,6 @@ test('a child error stops the parent before its remaining actions', async () => 
     });
     assert.match(response.error[0], /createVM.*disabled/);
     assert.equal(response.orgConnected[0].finished, undefined);
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1], response);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0], response);
 });
