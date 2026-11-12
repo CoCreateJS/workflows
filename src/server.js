@@ -52,7 +52,7 @@ function createWorkflowData(payload, workflowName) {
 	});
 }
 
-function createSandbox(payload, workflowDefinition, workflowName, organization_id, host) {
+function createSandbox(payload, workflowDefinition, workflowName, organization_id, host, internal) {
 	const allowOrganizationOverride =
 		!server.manager?.organization_id && organization_id === server.organization_id;
 	const crud = createTenantProxy(server.crud, organization_id, host, allowOrganizationOverride);
@@ -70,7 +70,7 @@ function createSandbox(payload, workflowDefinition, workflowName, organization_i
 				"server", "worker", "cluster", "master", "serverId", "workerId", "clusterId", "response"]) {
 				delete child[field];
 			}
-			const result = await execute(child);
+			const result = await execute(child, { internal });
 			if (throwOnError && result.error?.length) {
 				throw new Error(result.error.map(error => error?.message || String(error)).join('; '));
 			}
@@ -137,7 +137,7 @@ async function executeWorkflowActions(actions, sandbox) {
  * @private
  * @environment server
  */
-async function execute(payload = {}) {
+async function execute(payload = {}, { internal = false } = {}) {
 	try {
 		if (!server?.crud?.send) {
 			throw new Error("CoCreate Workflows has not been initialized with a server.");
@@ -181,6 +181,9 @@ async function execute(payload = {}) {
 		if (!workflowDefinition) {
 			throw new Error(`Workflow '${workflowName}' was not found.`);
 		}
+		if (workflowDefinition.internal === true && internal !== true) {
+			throw new Error(`Workflow '${workflowName}' requires an internal server invocation.`);
+		}
 		if (workflowDefinition.enabled === false) {
 			throw new Error(`Workflow '${workflowName}' is disabled.`);
 		}
@@ -188,7 +191,7 @@ async function execute(payload = {}) {
 			throw new Error(`Workflow '${workflowName}' has no actions object.`);
 		}
 
-		const sandbox = createSandbox(payload, workflowDefinition, workflowName, organization_id, host);
+		const sandbox = createSandbox(payload, workflowDefinition, workflowName, organization_id, host, internal);
 		await executeWorkflowActions(workflowDefinition.actions, sandbox);
 	} catch (error) {
 		if (!Array.isArray(payload.error)) {
@@ -206,8 +209,8 @@ async function execute(payload = {}) {
  * @public
  * @environment server
  */
-async function run(payload = {}) {
-	await execute(payload);
+async function run(payload = {}, options = {}) {
+	await execute(payload, options);
 	try {
 		Promise.resolve(server.send(payload)).catch(error => {
 			console.error("[@cocreate/workflows] Response delivery failed:", error);
