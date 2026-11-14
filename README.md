@@ -188,17 +188,11 @@ See [`demo/workflow.json`](demo/workflow.json) and the [documentation](docs/inde
 
 Inbound workflow payloads use the central Cluster HTTP transport, which resolves organization scope and authorizes before calling `server.workflow.run`. Invoke a workflow with a payload such as `{ "method": "workflow.example", "example": [{ "input": "value" }] }`.
 
-`run()` remains the execution API used by trusted internal calls and socket dispatch, where socket authorization already occurs. Nested workflows retain their existing scoped execution.
+`run()` remains the execution API used by server calls and socket dispatch, where socket authorization already occurs. Nested workflows retain their existing scoped execution.
 
 `$clientInfo` is a snapshot of the originating connection's existing metadata when
 its organization and authenticated user match the invocation. It does not expose a
 socket object and is absent when the originating connection is unavailable locally.
 Onboarding can use its coordinates, falling back to the user's stored location.
 
-
-Workflow definitions may set `internal: true` to restrict execution to trusted
-server code calling `server.workflow.run(payload, { internal: true })`. A field
-named `internal` in the transport payload does not grant this access. Nested
-workflows inherit their caller's internal execution context. This supports the
-Mesh `peerUnavailable` workflow without allowing client requests to report a
-server failure directly.
+Workflow execution uses `server.workflow.run(payload)`. Execution and response-delivery errors append to the payload's `error` array without replacing earlier entries or writing API failures to the console.

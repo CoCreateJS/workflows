@@ -11,6 +11,13 @@ import { astAsync } from "@cocreate/utils";
 
 let server;
 
+function errorHandler(data, error) {
+    if (!Array.isArray(data.error)) data.error = data.error === undefined ? [] : [data.error];
+    const errors = error?.errors ?? error?.message ?? error;
+    data.error.push(...(Array.isArray(errors) ? errors : [errors]));
+    return data;
+}
+
 function createTenantProxy(target, organization_id, host, allowOrganizationOverride = false) {
 	if (!target) return undefined;
 
@@ -52,7 +59,7 @@ function createWorkflowData(payload, workflowName) {
 	});
 }
 
-function createSandbox(payload, workflowDefinition, workflowName, organization_id, host, internal) {
+function createSandbox(payload, workflowDefinition, workflowName, organization_id, host) {
 	const allowOrganizationOverride =
 		!server.manager?.organization_id && organization_id === server.organization_id;
 	const crud = createTenantProxy(server.crud, organization_id, host, allowOrganizationOverride);
@@ -70,9 +77,9 @@ function createSandbox(payload, workflowDefinition, workflowName, organization_i
 				"server", "worker", "cluster", "master", "serverId", "workerId", "clusterId", "response"]) {
 				delete child[field];
 			}
-			const result = await execute(child, { internal });
+			const result = await execute(child);
 			if (throwOnError && result.error?.length) {
-				throw new Error(result.error.map(error => error?.message || String(error)).join('; '));
+				throw Object.assign(new Error('Child workflow failed.'), { errors: result.error });
 			}
 			return result;
 		}
@@ -137,7 +144,7 @@ async function executeWorkflowActions(actions, sandbox) {
  * @private
  * @environment server
  */
-async function execute(payload = {}, { internal = false } = {}) {
+async function execute(payload = {}) {
 	try {
 		if (!server?.crud?.send) {
 			throw new Error("CoCreate Workflows has not been initialized with a server.");
@@ -181,9 +188,6 @@ async function execute(payload = {}, { internal = false } = {}) {
 		if (!workflowDefinition) {
 			throw new Error(`Workflow '${workflowName}' was not found.`);
 		}
-		if (workflowDefinition.internal === true && internal !== true) {
-			throw new Error(`Workflow '${workflowName}' requires an internal server invocation.`);
-		}
 		if (workflowDefinition.enabled === false) {
 			throw new Error(`Workflow '${workflowName}' is disabled.`);
 		}
@@ -191,13 +195,10 @@ async function execute(payload = {}, { internal = false } = {}) {
 			throw new Error(`Workflow '${workflowName}' has no actions object.`);
 		}
 
-		const sandbox = createSandbox(payload, workflowDefinition, workflowName, organization_id, host, internal);
+		const sandbox = createSandbox(payload, workflowDefinition, workflowName, organization_id, host);
 		await executeWorkflowActions(workflowDefinition.actions, sandbox);
 	} catch (error) {
-		if (!Array.isArray(payload.error)) {
-			payload.error = payload.error ? [payload.error] : [];
-		}
-		payload.error.push(error?.message || String(error));
+		errorHandler(payload, error);
 	}
 
 	return payload;
@@ -209,14 +210,16 @@ async function execute(payload = {}, { internal = false } = {}) {
  * @public
  * @environment server
  */
-async function run(payload = {}, options = {}) {
-	await execute(payload, options);
+async function run(payload = {}) {
+	await execute(payload);
 	try {
-		Promise.resolve(server.send(payload)).catch(error => {
-			console.error("[@cocreate/workflows] Response delivery failed:", error);
+		Promise.resolve(server.send(payload)).then(response => {
+			if (response?.error && response.error !== payload.error) errorHandler(payload, response.error);
+		}).catch(error => {
+			errorHandler(payload, error);
 		});
 	} catch (error) {
-		console.error("[@cocreate/workflows] Response delivery failed:", error);
+		errorHandler(payload, error);
 	}
 	return payload;
 }

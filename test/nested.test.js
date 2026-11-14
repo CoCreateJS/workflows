@@ -86,3 +86,16 @@ test('a child error stops the parent before its remaining actions', async () => 
     assert.equal(sent.length, 1);
     assert.equal(sent[0], response);
 });
+
+test('child errors accumulate on the original parent payload and preserve earlier errors', async () => {
+    await initialize({ name: 'createVM', enabled: false, actions: {} });
+    const error = ['earlier parent failure'];
+    const response = await Workflows.run({
+        method: 'workflow.orgConnected', organization_id: 'platform', host: 'platform.test',
+        orgConnected: [{ cluster_id: 'cluster-1' }], error
+    });
+    assert.strictEqual(response.error, error);
+    assert.equal(response.error.length, 2);
+    assert.equal(response.error[0], 'earlier parent failure');
+    assert.match(response.error[1], /createVM.*disabled/);
+});

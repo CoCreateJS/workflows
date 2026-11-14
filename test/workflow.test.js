@@ -156,3 +156,33 @@ test("unique workflow rejects another match even when the first belongs to the c
 	assert.equal(envelope.error, undefined);
 	assert.equal(envelope.unique, false);
 });
+
+test('execution and response-delivery failures accumulate on the payload without logging', async t => {
+    t.mock.method(console, 'error', () => assert.fail('Workflow API failures belong on the payload'));
+    await Workflows.init({
+        crud: { send: async () => ({ object: [] }) },
+        send() { throw Error('response unavailable'); }
+    });
+    const response = await Workflows.run({ method: 'workflow.missing', organization_id: 'org', host: 'example.test', error: ['earlier failure'] });
+    assert.deepEqual(response.error, ['earlier failure', "Workflow 'missing' was not found.", 'response unavailable']);
+});
+
+test('AST execution failures append to the workflow payload error array', async t => {
+    t.mock.method(console, 'error', () => assert.fail('Workflow API failures belong on the payload'));
+    await Workflows.init({
+        crud: { send: async () => ({ object: [{ name: 'fails', actions: { '$throw': 'AST action failed' } }] }) },
+        send: async data => data
+    });
+    const response = await Workflows.run({ method: 'workflow.fails', organization_id: 'org', host: 'example.test', error: ['earlier failure'] });
+    assert.deepEqual(response.error, ['earlier failure', 'AST action failed']);
+});
+
+test('response delivery error envelopes accumulate without duplicating the workflow errors', async () => {
+    await Workflows.init({
+        crud: { send: async () => ({ object: [{ name: 'ok', actions: {} }] }) },
+        send: async () => ({ error: ['delivery rejected'] })
+    });
+    const response = await Workflows.run({ method: 'workflow.ok', organization_id: 'org', host: 'example.test', error: ['earlier failure'] });
+    await Promise.resolve();
+    assert.deepEqual(response.error, ['earlier failure', 'delivery rejected']);
+});
